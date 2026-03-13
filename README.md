@@ -1,6 +1,6 @@
 # PhysioBot - AI Physiotherapy Robot Assistant
 
-An AI-powered physiotherapy coaching system that uses a SO101 robot arm to demonstrate exercises, captures patient movements via camera, evaluates form using a Vision Language Model, and provides spoken feedback — all in a seamless rehabilitation loop.
+An AI-powered physiotherapy coaching system that uses a SO101 robot arm to demonstrate exercises, captures patient movements via camera, evaluates form using Claude vision, and provides spoken feedback — orchestrated end-to-end by a **Toolhouse agent**.
 
 ---
 
@@ -16,24 +16,24 @@ An AI-powered physiotherapy coaching system that uses a SO101 robot arm to demon
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     FastAPI Backend (main.py)                       │
 │                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │ /api/session │  │  /api/voice  │  │       /health            │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────────────────────┘  │
-│         │                 │                                         │
-│  ┌──────▼───────────────────────────────────────────────────────┐  │
-│  │                    App Modules                                │  │
-│  │                                                              │  │
-│  │  cyberwave.py   camera.py    vlm.py    voice.py   session.py │  │
-│  └──────┬──────────────────────────────────────────────────────┘  │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────┐  │
+│  │ /api/agent  │  │ /api/session │  │  /api/voice  │  │ /health │  │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └─────────┘  │
+│         │                │                 │                        │
+│  ┌──────▼──────────────────────────────────────────────────────┐   │
+│  │              App Modules                                     │   │
+│  │  agent.py  cyberwave.py  camera.py  vlm.py  voice.py  ...   │   │
+│  └──────┬───────────────────────────────────────────────────────┘   │
 └─────────┼───────────────────────────────────────────────────────────┘
           │
-          ├──► Cyberwave API  ──► SO101 Robot Arm (demonstrates exercise)
+          ├──► Toolhouse       ──► Agent orchestration (Claude claude-sonnet-4-6 brain)
+          │         │
+          │         ├──► demonstrate_exercise  ──► Cyberwave API ──► SO101 arm
+          │         ├──► capture_patient_attempt ──► OpenCV ──► rover camera
+          │         ├──► evaluate_exercise_form ──► Claude vision (Anthropic)
+          │         └──► speak_feedback         ──► Smallest.ai TTS
           │
-          ├──► OpenCV          ──► Webcam on rover (captures patient)
-          │
-          ├──► OpenAI GPT-4o  ──► VLM evaluation (scores movement)
-          │
-          └──► Smallest.ai    ──► STT (voice commands) + TTS (feedback)
+          └──► Smallest.ai STT ──► voice commands from patient
 ```
 
 ---
@@ -45,25 +45,25 @@ Patient: "Start shoulder rehab"
     │
     ▼ STT (smallest.ai)
     │
-    ▼ FastAPI parses command → creates RehabSession
+    ▼ POST /api/agent/run → creates RehabSession
     │
-    ▼ Cyberwave API → triggers shoulder_rotation workflow
+    ▼ Toolhouse agent (Claude claude-sonnet-4-6) starts agentic loop:
     │
-    ▼ SO101 arm demonstrates shoulder rotation
+    ▼ [Tool call] demonstrate_exercise("shoulder_rotation")
+    │   └──► Cyberwave API → SO101 arm performs the motion
     │
-    ▼ Patient mirrors the exercise
+    ▼ [Tool call] capture_patient_attempt(session_id, duration=10)
+    │   └──► OpenCV records 10s of patient mirroring the exercise
     │
-    ▼ Camera (OpenCV) records 10 seconds of footage
+    ▼ [Tool call] evaluate_exercise_form(session_id, "shoulder_rotation")
+    │   └──► Frames → Claude claude-sonnet-4-6 vision → { score: 8, corrections: [...] }
     │
-    ▼ Frames sent to GPT-4o vision with evaluation criteria
+    ▼ [Tool call] speak_feedback("Good effort! Raise your arm 20° higher.")
+    │   └──► Smallest.ai TTS → audio played to patient
     │
-    ▼ VLM returns: { score: 8, corrections: ["Raise arm higher"] }
+    ▼ Agent returns final evaluation JSON
     │
-    ▼ Reasoning maps corrections → spoken feedback
-    │
-    ▼ TTS (smallest.ai) speaks: "Good effort! Try raising your arm higher."
-    │
-    ▼ Session logged, patient can repeat or move to next exercise
+    ▼ Poll GET /api/agent/{session_id}/result → { score, feedback, corrections }
 ```
 
 ---
@@ -75,16 +75,17 @@ Patient: "Start shoulder rehab"
 - API keys for:
   - [Cyberwave](https://cyberwave.com) — robot arm control
   - [Smallest.ai](https://smallest.ai) — speech-to-text and text-to-speech
-  - [OpenAI](https://platform.openai.com) — GPT-4o vision evaluation
+  - [Anthropic](https://console.anthropic.com) — Claude claude-sonnet-4-6 vision evaluation
+  - [Toolhouse](https://app.toolhouse.ai) — agent orchestration and tool execution
 
 ---
 
 ## Installation
 
-### 1. Clone / navigate to project
+### 1. Navigate to project
 
 ```bash
-cd /Users/lawrancechen/Documents/cyberwave-hackathon
+cd cyberwave-hackathon
 ```
 
 ### 2. Create and activate a virtual environment
@@ -117,7 +118,8 @@ cp .env.example .env
 | `CYBERWAVE_API_KEY` | Bearer token for Cyberwave robot API |
 | `CYBERWAVE_BASE_URL` | Cyberwave API base URL (default provided) |
 | `SMALLEST_API_KEY` | API key for smallest.ai STT/TTS |
-| `OPENAI_API_KEY` | OpenAI API key for GPT-4o vision |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude claude-sonnet-4-6 vision |
+| `TOOLHOUSE_API_KEY` | Toolhouse API key for agent orchestration |
 | `CAMERA_INDEX` | OpenCV camera index (0 = default webcam) |
 
 ---
@@ -129,6 +131,8 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Then open your browser at: **http://localhost:8000**
+
+The interactive API docs are at: **http://localhost:8000/docs**
 
 ---
 
@@ -152,32 +156,41 @@ cyberwave-hackathon/
 ├── README.md
 ├── app/
 │   ├── __init__.py
-│   ├── config.py            # Pydantic settings
-│   ├── cyberwave.py         # Robot arm client
+│   ├── config.py            # Pydantic settings (all env vars)
+│   ├── agent.py             # Toolhouse agent + local tool registration
+│   ├── cyberwave.py         # SO101 robot arm client (Cyberwave API)
 │   ├── camera.py            # OpenCV frame capture
-│   ├── vlm.py               # GPT-4o vision evaluation
+│   ├── vlm.py               # Claude claude-sonnet-4-6 vision evaluation (Anthropic)
 │   ├── voice.py             # Smallest.ai STT + TTS
-│   ├── session.py           # Session state management
+│   ├── session.py           # In-memory session state
 │   └── routers/
 │       ├── __init__.py
-│       ├── session.py       # /api/session/* endpoints
-│       └── voice.py         # /api/voice/* endpoints
+│       ├── agent.py         # /api/agent/* — autonomous Toolhouse agent endpoint
+│       ├── session.py       # /api/session/* — manual step-by-step endpoints
+│       └── voice.py         # /api/voice/* — STT / TTS / command parsing
 └── static/
-    ├── index.html           # Frontend UI
-    └── app.js               # Frontend JS logic
+    ├── index.html           # Frontend UI (dark theme)
+    └── app.js               # Vanilla JS session flow + mic recording
 ```
 
 ---
 
 ## API Reference
 
-### Session Endpoints
+### Agent Endpoints (Toolhouse-powered autonomous mode)
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/session/start` | Start session, trigger arm demo |
+| `POST` | `/api/agent/run` | Start a fully autonomous rehab session |
+| `GET` | `/api/agent/{id}/result` | Poll session phase and get evaluation result |
+
+### Session Endpoints (manual step-by-step mode)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/session/start` | Create session, trigger arm demo |
 | `POST` | `/api/session/{id}/record` | Record 10s of patient movement |
-| `POST` | `/api/session/{id}/evaluate` | VLM evaluation of captured frames |
+| `POST` | `/api/session/{id}/evaluate` | Claude vision evaluation of frames |
 | `POST` | `/api/session/{id}/speak` | TTS of evaluation feedback |
 | `GET` | `/api/session/{id}/status` | Get current session phase |
 
@@ -194,3 +207,32 @@ cyberwave-hackathon/
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Service health check |
+
+---
+
+## Toolhouse Integration Details
+
+The Toolhouse SDK (`toolhouse` Python package) is used with `Provider.ANTHROPIC` so Claude claude-sonnet-4-6 acts as the reasoning brain. Four local tools are registered:
+
+| Tool | What it does |
+|---|---|
+| `demonstrate_exercise` | Calls Cyberwave API to move the SO101 arm |
+| `capture_patient_attempt` | Runs OpenCV to record the patient |
+| `evaluate_exercise_form` | Sends frames to Claude claude-sonnet-4-6 vision, returns scored JSON |
+| `speak_feedback` | Calls Smallest.ai TTS and caches audio |
+
+Toolhouse handles the agentic loop: it calls tools, feeds results back to Claude, and repeats until Claude produces a final response with no further tool calls.
+
+---
+
+## Cyberwave Setup
+
+On hack day, update `EXERCISE_WORKFLOWS` in `app/cyberwave.py` with real workflow IDs from your Cyberwave dashboard:
+
+```python
+EXERCISE_WORKFLOWS = {
+    "shoulder_rotation": "your-real-workflow-id-here",
+    "elbow_flex":        "your-real-workflow-id-here",
+    "wrist_rotation":    "your-real-workflow-id-here",
+}
+```

@@ -1,7 +1,8 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-dotenv>=1.0.1
-openai>=1.30.0
+anthropic>=0.28.0
+toolhouse>=1.4.0
 opencv-python>=4.9.0.80
 pillow>=10.3.0
 requests>=2.31.0

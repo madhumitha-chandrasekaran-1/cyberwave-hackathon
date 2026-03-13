@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.config import settings
+from app.routers import agent as agent_router
 from app.routers import session as session_router
 from app.routers import voice as voice_router
 
@@ -61,6 +62,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Routers
 # ---------------------------------------------------------------------------
+app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
 app.include_router(session_router.router, prefix="/api/session", tags=["session"])
 app.include_router(voice_router.router, prefix="/api/voice", tags=["voice"])
 

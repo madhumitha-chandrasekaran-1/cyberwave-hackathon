@@ -1,16 +1,17 @@
 """
 VLM (Vision Language Model) evaluation module.
 
-Sends captured exercise frames to GPT-4o vision and receives a structured
-physiotherapy assessment: score, qualitative feedback, and correction cues.
+Sends captured exercise frames to Claude claude-sonnet-4-6 (via Anthropic) and receives
+a structured physiotherapy assessment: score, qualitative feedback, and corrections.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
-from openai import AsyncOpenAI
+import anthropic
 
 from app.config import settings
 
@@ -61,15 +62,16 @@ SYSTEM_PROMPT = (
     '  "corrections": ["<specific correction 1>", "<specific correction 2>", ...]\n'
     "}\n\n"
     "corrections should be an empty list if the form is good. "
-    "Be specific and actionable — say exactly what to change and how."
+    "Be specific and actionable — say exactly what to change and how. "
+    "Respond ONLY with the JSON object, no markdown fences or extra text."
 )
 
 
 class VLMEvaluator:
-    """Sends exercise frames to GPT-4o vision and parses structured feedback."""
+    """Sends exercise frames to Claude claude-sonnet-4-6 vision and parses structured feedback."""
 
     def __init__(self) -> None:
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     async def evaluate_exercise(
         self,
@@ -79,6 +81,8 @@ class VLMEvaluator:
     ) -> dict[str, Any]:
         """
         Evaluate a patient's exercise performance from a list of base64 frames.
+
+        Uses Claude claude-sonnet-4-6 via the Anthropic API with vision support.
 
         Args:
             frames_b64: List of base64-encoded JPEG frames (already sub-sampled).
@@ -91,7 +95,7 @@ class VLMEvaluator:
 
         Raises:
             ValueError: If frames_b64 is empty.
-            openai.OpenAIError: On API failure.
+            anthropic.APIError: On API failure.
         """
         if not frames_b64:
             raise ValueError("No frames provided for VLM evaluation.")
@@ -101,20 +105,8 @@ class VLMEvaluator:
             "Evaluate overall exercise form and range of motion.",
         )
 
-        # Build user message with all frames as image_url parts
-        image_parts: list[dict[str, Any]] = []
-        for b64 in frames_b64:
-            image_parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{b64}",
-                        "detail": "low",  # 'low' keeps token cost manageable
-                    },
-                }
-            )
-
-        user_message: list[dict[str, Any]] = [
+        # Build the user content block: text prompt + image frames
+        content: list[dict[str, Any]] = [
             {
                 "type": "text",
                 "text": (
@@ -123,29 +115,49 @@ class VLMEvaluator:
                     f"The following {len(frames_b64)} frames show the patient performing "
                     "this exercise. Please evaluate their form and return your JSON assessment."
                 ),
-            },
-            *image_parts,
+            }
         ]
 
+        for b64 in frames_b64:
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": b64,
+                    },
+                }
+            )
+
         logger.info(
-            "Sending %d frames to GPT-4o for '%s' evaluation", len(frames_b64), exercise_name
+            "Sending %d frames to Claude claude-sonnet-4-6 for '%s' evaluation", len(frames_b64), exercise_name
         )
 
-        response = await self._client.chat.completions.create(
-            model="gpt-4o",
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},  # type: ignore[arg-type]
-            ],
-            max_tokens=512,
-            temperature=0.2,  # Low temperature for consistent clinical scoring
+        # Anthropic SDK is synchronous; run in executor so we don't block the event loop
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: self._client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=512,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": content}],
+            ),
         )
 
-        raw = response.choices[0].message.content or "{}"
+        raw = response.content[0].text if response.content else "{}"
         logger.debug("VLM raw response: %s", raw)
 
-        import json
+        # Strip markdown fences if model included them despite instructions
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
 
         result: dict[str, Any] = json.loads(raw)
 

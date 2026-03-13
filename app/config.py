@@ -25,8 +25,11 @@ class Settings(BaseSettings):
     smallest_api_key: str = ""
     smallest_base_url: str = "https://waves.smallest.ai"
 
-    # OpenAI
-    openai_api_key: str = ""
+    # Anthropic (Claude vision for exercise evaluation)
+    anthropic_api_key: str = ""
+
+    # Toolhouse (agent orchestration + tool execution)
+    toolhouse_api_key: str = ""
 
     # Camera
     camera_index: int = 0
