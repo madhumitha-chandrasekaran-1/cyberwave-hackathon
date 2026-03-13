@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhysioBot — Your AI Rehab Coach</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface-2:   #1f2937;
+      --border:      #30363d;
+      --accent:      #2ea043;
+      --accent-glow: rgba(46, 160, 67, 0.25);
+      --accent-2:    #1f6feb;
+      --warn:        #d29922;
+      --danger:      #da3633;
+      --text:        #e6edf3;
+      --muted:       #8b949e;
+      --radius:      12px;
+      --radius-sm:   8px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ── */
+    .app {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 16px 64px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      padding: 40px 0 32px;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, #2ea043, #1f6feb);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+    }
+    h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; }
+    .tagline { color: var(--muted); font-size: 0.95rem; margin-top: 6px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Phase status badge ── */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .phase-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: all 0.3s;
+    }
+    .phase-badge.active   { background: var(--accent-glow); border-color: var(--accent); color: #7ee787; }
+    .phase-badge.busy     { background: rgba(31,111,235,0.2); border-color: var(--accent-2); color: #79c0ff; }
+    .phase-badge.warn     { background: rgba(210,153,34,0.2); border-color: var(--warn); color: #e3b341; }
+    .phase-badge.done     { background: rgba(46,160,67,0.15); border-color: var(--accent); color: #56d364; }
+    .pulse {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    /* ── Controls ── */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 560px) { .controls-grid { grid-template-columns: 1fr; } }
+
+    label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom: 8px; }
+    select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='%238b949e'%3E%3Cpath d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+    }
+    select:focus { border-color: var(--accent); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 22px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+      width: 100%;
+    }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary   { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled)   { opacity: 0.88; box-shadow: 0 0 0 3px var(--accent-glow); }
+    .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--muted); }
+    .btn-accent2   { background: var(--accent-2); color: #fff; }
+    .btn-accent2:hover:not(:disabled)   { opacity: 0.88; }
+    .btn-danger    { background: var(--danger); color: #fff; }
+    .btn-danger:hover:not(:disabled)    { opacity: 0.88; }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 460px) { .btn-row { grid-template-columns: 1fr; } }
+
+    /* ── Mic button ── */
+    .mic-wrap { display: flex; justify-content: center; margin-bottom: 20px; }
+    .btn-mic {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 2px solid var(--border);
+      color: var(--text);
+      font-size: 1.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .btn-mic.recording {
+      background: rgba(218,54,51,0.15);
+      border-color: var(--danger);
+      box-shadow: 0 0 0 6px rgba(218,54,51,0.15);
+      animation: mic-pulse 1s ease-in-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%, 100% { box-shadow: 0 0 0 6px rgba(218,54,51,0.15); }
+      50%       { box-shadow: 0 0 0 12px rgba(218,54,51,0.05); }
+    }
+    .mic-hint { text-align: center; font-size: 0.82rem; color: var(--muted); margin-top: 8px; }
+
+    /* ── Score display ── */
+    .score-display {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .score-ring {
+      flex-shrink: 0;
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--surface-2) 0);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .score-ring::after {
+      content: '';
+      width: 58px; height: 58px;
+      border-radius: 50%;
+      background: var(--surface);
+      position: absolute;
+    }
+    .score-num {
+      position: relative;
+      z-index: 1;
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+    .score-meta { flex: 1; }
+    .score-label { font-size: 0.82rem; color: var(--muted); margin-bottom: 4px; }
+    .feedback-text { font-size: 0.95rem; }
+
+    /* ── Corrections list ── */
+    .corrections { margin-top: 16px; }
+    .corrections-title { font-size: 0.82rem; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+    .correction-item {
+      display: flex;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: rgba(210,153,34,0.08);
+      border: 1px solid rgba(210,153,34,0.25);
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+    .correction-item .icon { flex-shrink: 0; }
+
+    /* ── Audio player ── */
+    .audio-player-wrap { margin-top: 16px; }
+    audio {
+      width: 100%;
+      border-radius: var(--radius-sm);
+      outline: none;
+    }
+    audio::-webkit-media-controls-panel { background: var(--surface-2); }
+
+    /* ── Attempt history ── */
+    .history-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .history-table th {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .history-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-table tr:last-child td { border-bottom: none; }
+    .badge-good  { color: #56d364; font-weight: 700; }
+    .badge-warn  { color: #e3b341; font-weight: 700; }
+    .badge-bad   { color: #ff7b72; font-weight: 700; }
+
+    /* ── Toast notifications ── */
+    .toast-container {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 10px;
+      z-index: 1000;
+    }
+    .toast {
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-weight: 500;
+      max-width: 320px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      animation: slide-in 0.25s ease-out;
+      cursor: pointer;
+    }
+    .toast.info    { background: var(--accent-2); color: #fff; }
+    .toast.success { background: var(--accent); color: #fff; }
+    .toast.error   { background: var(--danger); color: #fff; }
+    .toast.warning { background: var(--warn); color: #000; }
+    @keyframes slide-in {
+      from { transform: translateX(120%); opacity: 0; }
+      to   { transform: translateX(0);   opacity: 1; }
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Misc ── */
+    .hidden { display: none !important; }
+    .text-muted { color: var(--muted); }
+    .mt-8 { margin-top: 8px; }
+    .session-id-display { font-family: monospace; font-size: 0.78rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🦾</div>
+      <h1>PhysioBot</h1>
+    </div>
+    <p class="tagline">AI-powered rehabilitation coach — robot demo, camera capture, voice feedback</p>
+  </header>
+
+  <!-- Status bar -->
+  <div class="card">
+    <div class="status-row">
+      <div id="phaseBadge" class="phase-badge">
+        <span class="pulse"></span>
+        <span id="phaseText">Idle</span>
+      </div>
+      <span id="sessionIdDisplay" class="session-id-display hidden"></span>
+    </div>
+
+    <!-- Exercise selector + Start -->
+    <div id="setupPanel">
+      <div class="controls-grid">
+        <div>
+          <label for="exerciseSelect">Exercise</label>
+          <select id="exerciseSelect">
+            <option value="shoulder_rotation">Shoulder Rotation</option>
+            <option value="elbow_flex">Elbow Flexion</option>
+            <option value="wrist_rotation">Wrist Rotation</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:flex-end;">
+          <button id="btnStart" class="btn btn-primary">
+            ▶ Start Session
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active session controls (hidden until session starts) -->
+    <div id="sessionPanel" class="hidden">
+      <div class="btn-row">
+        <button id="btnRecord" class="btn btn-accent2" disabled>
+          ⏺ Record My Attempt
+        </button>
+        <button id="btnEvaluate" class="btn btn-secondary" disabled>
+          🔍 Evaluate
+        </button>
+      </div>
+      <div class="btn-row">
+        <button id="btnSpeak" class="btn btn-secondary" disabled>
+          🔊 Speak Feedback
+        </button>
+        <button id="btnNewSession" class="btn btn-secondary">
+          ↺ New Session
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voice command (microphone) -->
+  <div class="card">
+    <div class="card-title">Voice Command</div>
+    <div class="mic-wrap">
+      <button id="btnMic" class="btn-mic" title="Hold to speak a command">🎤</button>
+    </div>
+    <div class="mic-hint" id="micHint">Tap mic to record a voice command (e.g. "Start shoulder rehab")</div>
+    <div id="transcriptDisplay" class="mt-8 text-muted hidden" style="font-size:0.875rem;"></div>
+  </div>
+
+  <!-- Evaluation result (hidden until evaluated) -->
+  <div id="evaluationCard" class="card hidden">
+    <div class="card-title">Evaluation Result</div>
+    <div class="score-display">
+      <div class="score-ring" id="scoreRing" style="--pct:0">
+        <span class="score-num" id="scoreNum">—</span>
+      </div>
+      <div class="score-meta">
+        <div class="score-label">Overall Score</div>
+        <div class="feedback-text" id="feedbackText">Awaiting evaluation…</div>
+      </div>
+    </div>
+    <div id="correctionsWrap" class="corrections hidden">
+      <div class="corrections-title">Corrections Needed</div>
+      <div id="correctionsList"></div>
+    </div>
+    <div class="audio-player-wrap hidden" id="audioWrap">
+      <audio id="feedbackAudio" controls></audio>
+    </div>
+  </div>
+
+  <!-- Attempt history -->
+  <div id="historyCard" class="card hidden">
+    <div class="card-title">Attempt History</div>
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Time</th>
+          <th>Score</th>
+          <th>Correct?</th>
+          <th>Feedback</th>
+        </tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
